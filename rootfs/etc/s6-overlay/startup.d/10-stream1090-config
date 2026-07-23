@@ -23,11 +23,6 @@ write_if_set() {
     fi
 }
 
-is_uint64_literal() {
-    local value="$1"
-    [[ "$value" =~ ^(0[xX][0-9a-fA-F]+|[0-9]+)$ ]]
-}
-
 device="${STREAM1090_DEVICE:-rtlsdr}"
 device="${device,,}"
 
@@ -56,14 +51,7 @@ else
     write_kv "bias_tee" "false"
 fi
 
-serial_value="${STREAM1090_SERIAL:-}"
-if [[ -n "$serial_value" ]]; then
-    if is_uint64_literal "$serial_value"; then
-        write_kv "serial" "$serial_value"
-    else
-        "${s6wrap[@]}" echo "Ignoring STREAM1090_SERIAL='${serial_value}' (stream1090 expects numeric or 0x-hex serial)"
-    fi
-fi
+write_if_set "serial" "${STREAM1090_SERIAL:-}"
 
 if [[ "$device" == "rtlsdr" ]]; then
     write_if_set "gain" "${STREAM1090_RTL_GAIN:-}"

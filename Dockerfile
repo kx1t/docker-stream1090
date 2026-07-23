@@ -13,6 +13,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG STREAM1090_REPO
 ARG STREAM1090_REF
 
+COPY stream1090-overrides/ /tmp/stream1090-overrides/
+
 RUN set -eux && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -29,6 +31,7 @@ RUN set -eux && \
 
 RUN set -eux && \
     git clone --depth 1 --branch "${STREAM1090_REF}" "${STREAM1090_REPO}" /src/stream1090 && \
+  cp -a /tmp/stream1090-overrides/. /src/stream1090/ && \
     cmake -S /src/stream1090 -B /tmp/build -DCMAKE_BUILD_TYPE=Release && \
     cmake --build /tmp/build --parallel "$(nproc)" && \
     mkdir -p /tmp/out && \
