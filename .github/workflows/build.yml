@@ -17,15 +17,12 @@ permissions:
   packages: write
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-amd64:
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,18 +42,137 @@ jobs:
           short_sha="${GITHUB_SHA::7}"
           {
             echo "image=ghcr.io/${repo_lower}"
-            echo "sha_tag=sha-${short_sha}"
+            echo "short_sha=${short_sha}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build and push amd64
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: |
-            ${{ steps.prep.outputs.image }}:latest
-            ${{ steps.prep.outputs.image }}:${{ steps.prep.outputs.sha_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ steps.prep.outputs.image }}:build-amd64-${{ steps.prep.outputs.short_sha }}
+          cache-from: |
+            type=registry,ref=${{ steps.prep.outputs.image }}:buildcache-amd64
+          cache-to: |
+            type=registry,ref=${{ steps.prep.outputs.image }}:buildcache-amd64,mode=max
+
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare tags
+        id: prep
+        run: |
+          set -euo pipefail
+          repo_lower="${GITHUB_REPOSITORY,,}"
+          short_sha="${GITHUB_SHA::7}"
+          {
+            echo "image=ghcr.io/${repo_lower}"
+            echo "short_sha=${short_sha}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.prep.outputs.image }}:build-arm64-${{ steps.prep.outputs.short_sha }}
+          cache-from: |
+            type=registry,ref=${{ steps.prep.outputs.image }}:buildcache-arm64
+          cache-to: |
+            type=registry,ref=${{ steps.prep.outputs.image }}:buildcache-arm64,mode=max
+
+  build-armhf:
+    # Requires a native ARMv7 self-hosted runner labelled: self-hosted, linux, armhf
+    runs-on: [self-hosted, linux, armhf]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare tags
+        id: prep
+        run: |
+          set -euo pipefail
+          repo_lower="${GITHUB_REPOSITORY,,}"
+          short_sha="${GITHUB_SHA::7}"
+          {
+            echo "image=ghcr.io/${repo_lower}"
+            echo "short_sha=${short_sha}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push armhf
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/arm/v7
+          push: true
+          tags: |
+            ${{ steps.prep.outputs.image }}:build-armhf-${{ steps.prep.outputs.short_sha }}
+          cache-from: |
+            type=registry,ref=${{ steps.prep.outputs.image }}:buildcache-armhf
+          cache-to: |
+            type=registry,ref=${{ steps.prep.outputs.image }}:buildcache-armhf,mode=max
+
+  publish-manifest:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-amd64
+      - build-arm64
+      - build-armhf
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          short_sha="${GITHUB_SHA::7}"
+
+          docker buildx imagetools create \
+            -t "${image}:latest" \
+            -t "${image}:sha-${short_sha}" \
+            "${image}:build-amd64-${short_sha}" \
+            "${image}:build-arm64-${short_sha}" \
+            "${image}:build-armhf-${short_sha}"
+
+          docker buildx imagetools inspect "${image}:latest"
