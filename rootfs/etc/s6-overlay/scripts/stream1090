@@ -1,0 +1,55 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026, Ramon F. Kolb (kx1t) and contributors
+
+set -euo pipefail
+
+s6wrap=(echo)
+# shellcheck disable=SC1091,SC2154
+source /scripts/common
+
+default_rate=""
+if [[ -f /run/stream1090/default_sample_rate ]]; then
+    default_rate="$(< /run/stream1090/default_sample_rate)"
+fi
+
+sample_rate="${STREAM1090_SAMPLE_RATE:-$default_rate}"
+if [[ -z "$sample_rate" ]]; then
+    "${s6wrap[@]}" echo "STREAM1090_SAMPLE_RATE could not be determined"
+    exit 1
+fi
+
+if [[ ! -f /run/stream1090/device.ini ]]; then
+    "${s6wrap[@]}" echo "Missing /run/stream1090/device.ini"
+    exit 1
+fi
+
+port="${STREAM1090_OUTPUT_PORT:-30001}"
+host="${STREAM1090_OUTPUT_HOST:-0.0.0.0}"
+
+stream_cmd=(
+    /usr/local/bin/stream1090
+    -s "$sample_rate"
+    -d /run/stream1090/device.ini
+)
+
+if [[ -n "${STREAM1090_UPSAMPLE_RATE:-}" ]]; then
+    stream_cmd+=( -u "${STREAM1090_UPSAMPLE_RATE}" )
+fi
+
+if chk_enabled "${STREAM1090_ENABLE_IQ_FILTER:-false}"; then
+    stream_cmd+=( -q )
+fi
+
+if [[ -n "${STREAM1090_TAPS_FILE:-}" ]]; then
+    stream_cmd+=( -f "${STREAM1090_TAPS_FILE}" )
+fi
+
+if chk_enabled "${STREAM1090_VERBOSE:-false}"; then
+    stream_cmd+=( -v )
+fi
+
+"${s6wrap[@]}" echo "Starting stream1090 and exposing RAW output on ${host}:${port}"
+
+exec bash -o pipefail -c '"${@}" | socat -u - "TCP-LISTEN:'"${port}"',bind='"${host}"',reuseaddr,fork"' _ "${stream_cmd[@]}"

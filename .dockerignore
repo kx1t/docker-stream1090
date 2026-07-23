@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026, Ramon F. Kolb (kx1t) and contributors
 
-# Auto detect text files and perform LF normalization
-* text=auto
+.git
+.github
+README.md
+*.md

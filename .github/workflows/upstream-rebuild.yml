@@ -1,0 +1,92 @@
+name: Rebuild on Upstream Stream1090 Changes
+
+on:
+  schedule:
+    - cron: "0 */12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get latest upstream commit
+        id: upstream
+        run: |
+          set -euo pipefail
+          sha="$(curl -fsSL https://api.github.com/repos/mgrone/stream1090/commits/main | jq -r '.sha')"
+          if [[ -z "$sha" || "$sha" == "null" ]]; then
+            echo "Failed to fetch upstream SHA" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check if this upstream SHA was already built
+        id: cache-upstream
+        uses: actions/cache@v4
+        with:
+          path: .upstream-marker
+          key: upstream-stream1090-${{ steps.upstream.outputs.sha }}
+
+      - name: Mark upstream SHA as built candidate
+        if: steps.cache-upstream.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p .upstream-marker
+          echo "${{ steps.upstream.outputs.sha }}" > .upstream-marker/sha
+
+      - name: Set up QEMU
+        if: steps.cache-upstream.outputs.cache-hit != 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.cache-upstream.outputs.cache-hit != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.cache-upstream.outputs.cache-hit != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare tags
+        if: steps.cache-upstream.outputs.cache-hit != 'true'
+        id: prep
+        run: |
+          set -euo pipefail
+          repo_lower="${GITHUB_REPOSITORY,,}"
+          short_upstream="${{ steps.upstream.outputs.sha }}"
+          short_upstream="${short_upstream::7}"
+          {
+            echo "image=ghcr.io/${repo_lower}"
+            echo "tag=upstream-${short_upstream}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image for new upstream commit
+        if: steps.cache-upstream.outputs.cache-hit != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            STREAM1090_REF=${{ steps.upstream.outputs.sha }}
+          tags: |
+            ${{ steps.prep.outputs.image }}:latest
+            ${{ steps.prep.outputs.image }}:${{ steps.prep.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Upstream unchanged
+        if: steps.cache-upstream.outputs.cache-hit == 'true'
+        run: echo "Upstream main SHA unchanged; skipping rebuild"

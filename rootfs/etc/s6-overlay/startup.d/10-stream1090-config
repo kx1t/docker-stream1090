@@ -1,0 +1,91 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026, Ramon F. Kolb (kx1t) and contributors
+
+set -euo pipefail
+
+s6wrap=(echo)
+# shellcheck disable=SC1091,SC2154
+source /scripts/common
+
+write_kv() {
+    local key="$1"
+    local value="$2"
+    printf '%s = %s\n' "$key" "$value" >> /run/stream1090/device.ini
+}
+
+write_if_set() {
+    local key="$1"
+    local value="$2"
+    if [[ -n "$value" ]]; then
+        write_kv "$key" "$value"
+    fi
+}
+
+device="${STREAM1090_DEVICE:-rtlsdr}"
+device="${device,,}"
+
+mkdir -p /run/stream1090
+
+case "$device" in
+    rtlsdr|airspy)
+        ;;
+    *)
+        "${s6wrap[@]}" echo "Invalid STREAM1090_DEVICE: '$device' (expected rtlsdr or airspy)"
+        exit 1
+        ;;
+esac
+
+: > /run/stream1090/device.ini
+printf '[%s]\n\n' "$device" >> /run/stream1090/device.ini
+
+frequency="${STREAM1090_FREQUENCY:-1090000000}"
+write_kv "frequency" "$frequency"
+
+if chk_enabled "${STREAM1090_BIAS_TEE:-false}"; then
+    write_kv "bias_tee" "true"
+elif chk_disabled "${STREAM1090_BIAS_TEE:-false}"; then
+    write_kv "bias_tee" "false"
+else
+    write_kv "bias_tee" "false"
+fi
+
+write_if_set "serial" "${STREAM1090_SERIAL:-}"
+
+if [[ "$device" == "rtlsdr" ]]; then
+    write_if_set "gain" "${STREAM1090_RTL_GAIN:-}"
+
+    if chk_enabled "${STREAM1090_RTL_AGC:-true}"; then
+        write_kv "agc" "true"
+    elif chk_disabled "${STREAM1090_RTL_AGC:-true}"; then
+        write_kv "agc" "false"
+    else
+        write_kv "agc" "true"
+    fi
+
+    write_if_set "ppm" "${STREAM1090_RTL_PPM:-}"
+    write_if_set "tuner_bandwidth" "${STREAM1090_RTL_TUNER_BANDWIDTH:-}"
+    write_if_set "lna_gain" "${STREAM1090_RTL_LNA_GAIN:-}"
+    write_if_set "mixer_gain" "${STREAM1090_RTL_MIXER_GAIN:-}"
+    write_if_set "vga_gain" "${STREAM1090_RTL_VGA_GAIN:-}"
+
+    if [[ -z "${STREAM1090_SAMPLE_RATE:-}" ]]; then
+        echo "2.4" > /run/stream1090/default_sample_rate
+    fi
+fi
+
+if [[ "$device" == "airspy" ]]; then
+    write_if_set "linearity_gain" "${STREAM1090_AIRSPY_LINEARITY_GAIN:-16}"
+    write_if_set "sensitivity_gain" "${STREAM1090_AIRSPY_SENSITIVITY_GAIN:-}"
+    write_if_set "lna_gain" "${STREAM1090_AIRSPY_LNA_GAIN:-}"
+    write_if_set "mixer_gain" "${STREAM1090_AIRSPY_MIXER_GAIN:-}"
+    write_if_set "vga_gain" "${STREAM1090_AIRSPY_VGA_GAIN:-}"
+
+    if [[ -z "${STREAM1090_SAMPLE_RATE:-}" ]]; then
+        echo "6" > /run/stream1090/default_sample_rate
+    fi
+fi
+
+"${s6wrap[@]}" echo "Generated /run/stream1090/device.ini for device '$device'"
+exit 0

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026, Ramon F. Kolb (kx1t) and contributors
+
+services:
+  stream1090:
+    image: ghcr.io/kx1t/docker-stream1090:latest
+    container_name: stream1090
+    restart: unless-stopped
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb:rw
+    environment:
+      - STREAM1090_DEVICE=${STREAM1090_DEVICE:-rtlsdr}
+      - STREAM1090_SERIAL=${STREAM1090_SERIAL:-00000001}
+      - STREAM1090_OUTPUT_PORT=${STREAM1090_OUTPUT_PORT:-30001}
+    ports:
+      - "30001:30001"
