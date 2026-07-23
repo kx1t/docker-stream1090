@@ -1,0 +1,5 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026, Ramon F. Kolb (kx1t) and contributors
+
+exec /etc/s6-overlay/startup.d/10-stream1090-config

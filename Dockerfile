@@ -63,7 +63,8 @@ RUN set -eux && \
         chmod +x \
             /etc/s6-overlay/startup.d/10-stream1090-config \
             /etc/s6-overlay/scripts/stream1090 \
-            /etc/s6-overlay/s6-rc.d/stream1090/run
+      /etc/s6-overlay/s6-rc.d/stream1090/run \
+      /etc/s6-overlay/s6-rc.d/stream1090-config/up
 
 ENV STREAM1090_DEVICE=rtlsdr
 ENV STREAM1090_SERIAL=""
