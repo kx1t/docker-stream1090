@@ -1,0 +1,9 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash disable=SC1091,SC2154
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026, Ramon F. Kolb (kx1t) and contributors
+
+set -euo pipefail
+source /scripts/common
+
+/usr/local/bin/stream1090 -h | "${s6wrap[@]}" awk 'NR==1{print;next} f&&/^Usage:$/ {f=0} g&&/^Examples:$/ {g=0} f||g {print} /^Native device support:$/ {f=1;print;next} /^Supported sample rate combinations:$/ {g=1;print;next}'

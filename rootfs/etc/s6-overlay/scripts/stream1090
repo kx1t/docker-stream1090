@@ -1,12 +1,9 @@
 #!/command/with-contenv bash
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC1091,SC2154
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026, Ramon F. Kolb (kx1t) and contributors
 
 set -euo pipefail
-
-s6wrap=(echo)
-# shellcheck disable=SC1091,SC2154
 source /scripts/common
 
 default_rate=""
@@ -52,4 +49,50 @@ fi
 
 "${s6wrap[@]}" echo "Starting stream1090 and exposing RAW output on ${host}:${port}"
 
-exec bash -o pipefail -c '"${@}" | socat -u - "TCP-LISTEN:'"${port}"',bind='"${host}"',reuseaddr,fork"' _ "${stream_cmd[@]}"
+tmp_pipe="$(mktemp -u /tmp/stream1090.XXXXXX.pipe)"
+mkfifo "$tmp_pipe"
+
+cleanup() {
+    rm -f "$tmp_pipe"
+}
+
+terminate_children() {
+    local pids=()
+    [[ -n "${stream_pid:-}" ]] && pids+=("$stream_pid")
+    [[ -n "${socat_pid:-}" ]] && pids+=("$socat_pid")
+    if [[ "${#pids[@]}" -gt 0 ]]; then
+        kill "${pids[@]}" 2>/dev/null || true
+    fi
+}
+
+on_term() {
+    terminate_children
+    [[ -n "${stream_pid:-}" ]] && wait "$stream_pid" 2>/dev/null || true
+    [[ -n "${socat_pid:-}" ]] && wait "$socat_pid" 2>/dev/null || true
+    exit 143
+}
+
+trap on_term INT TERM
+trap cleanup EXIT
+
+socat -u "$tmp_pipe" "TCP-LISTEN:${port},bind=${host},reuseaddr,fork" &
+socat_pid=$!
+
+"${stream_cmd[@]}" > "$tmp_pipe" &
+stream_pid=$!
+
+# Fail fast: as soon as either side exits, terminate the other side and stop.
+set +e
+wait -n "$stream_pid" "$socat_pid"
+exit_code=$?
+set -e
+
+terminate_children
+wait "$stream_pid" 2>/dev/null || true
+wait "$socat_pid" 2>/dev/null || true
+
+if [[ "$exit_code" -eq 0 ]]; then
+    exit 1
+fi
+
+exit "$exit_code"

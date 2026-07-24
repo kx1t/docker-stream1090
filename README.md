@@ -14,6 +14,8 @@ Set only these two environment variables:
 - `STREAM1090_DEVICE=rtlsdr` or `STREAM1090_DEVICE=airspy`
 - `STREAM1090_SERIAL=<your SDR serial>`
 
+Set `STREAM1090_VERBOSE=true` if you want stream1090 to run with `-v` and emit verbose output.
+
 Then start the container with USB pass-through:
 
 ```bash
