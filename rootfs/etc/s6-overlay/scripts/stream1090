@@ -82,10 +82,11 @@ socat_pid=$!
 stream_pid=$!
 
 # Fail fast: as soon as either side exits, terminate the other side and stop.
-set +e
-wait -n "$stream_pid" "$socat_pid"
-exit_code=$?
-set -e
+if wait -n "$stream_pid" "$socat_pid"; then
+    exit_code=0
+else
+    exit_code=$?
+fi
 
 terminate_children
 wait "$stream_pid" 2>/dev/null || true
